@@ -186,10 +186,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const now = new Date();
+
     const [orderInsert] = await conn.query(
       `INSERT INTO \`order\`
-      (customerName, tableNumber, total, discountId, discountAmount, taxAmount, gratuityAmount, finalTotal, roundingAmount, status, paymentMethod, paymentStatus, reservasiId)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (customerName, tableNumber, total, discountId, discountAmount, taxAmount, gratuityAmount, finalTotal, roundingAmount, status, paymentMethod, paymentStatus, reservasiId, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         orderDetails.customerName,
         orderDetails.tableNumber,
@@ -204,6 +206,8 @@ export async function POST(req: NextRequest) {
         orderDetails.paymentMethod || null,
         orderDetails.paymentMethod === "ewallet" ? "paid" : "pending",
         reservasiId,
+        now,
+        now,
       ]
     );
 
