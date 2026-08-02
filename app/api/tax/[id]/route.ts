@@ -53,7 +53,7 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
 
     const setClause = keys.map((key) => `${key} = ?`).join(", ");
 
-    await db.execute(`UPDATE tax SET ${setClause} WHERE id = ?`, [...values, taxId]);
+    await db.execute(`UPDATE tax SET ${setClause} WHERE id = ?`, [...values, taxId] as any[]);
 
     const [updated]: any = await db.query("SELECT * FROM tax WHERE id = ?", [taxId]);
     return NextResponse.json(updated[0], { status: 200 });
