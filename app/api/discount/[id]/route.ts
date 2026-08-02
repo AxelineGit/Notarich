@@ -33,7 +33,7 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
 
     const setClause = keys.map((key) => `${key} = ?`).join(", ");
 
-    await db.execute(`UPDATE discount SET ${setClause} WHERE id = ?`, [...values, discountId]);
+    await db.execute(`UPDATE discount SET ${setClause} WHERE id = ?`, [...values, discountId] as any[]);
 
     const [rows]: any = await db.query(`SELECT * FROM discount WHERE id = ?`, [discountId]);
 
