@@ -3,12 +3,8 @@ import db from '@/lib/db';
 
 export async function GET(_req: NextRequest) {
   try {
-    // Ambil semua menu dengan type NORMAL
-    const [menus] = await db.query(`
-      SELECT * FROM menu WHERE type = 'NORMAL'
-    `);
+    const [menus] = await db.query(`SELECT * FROM menu WHERE type = 'NORMAL'`);
 
-    // Ambil semua relasi yang dibutuhkan
     const [ingredients] = await db.query(`
       SELECT mi.menuId, mi.amount, i.*
       FROM menuIngredient mi
@@ -28,7 +24,6 @@ export async function GET(_req: NextRequest) {
       JOIN modifier m ON mm.modifierId = m.id
     `);
 
-    // Buat peta data
     const ingredientMap = new Map<number, any[]>();
     const discountMap = new Map<number, any[]>();
     const modifierMap = new Map<number, any[]>();
@@ -55,12 +50,8 @@ export async function GET(_req: NextRequest) {
       if (!discountMap.has(menuId)) discountMap.set(menuId, []);
       discountMap.get(menuId)!.push({
         discount: {
-          id: row.id,
-          name: row.name,
-          type: row.type,
-          scope: row.scope,
-          value: row.value,
-          isActive: row.isActive,
+          id: row.id, name: row.name, type: row.type,
+          scope: row.scope, value: row.value, isActive: row.isActive,
         },
       });
     }
@@ -69,49 +60,41 @@ export async function GET(_req: NextRequest) {
       const menuId = row.menuId;
       if (!modifierMap.has(menuId)) modifierMap.set(menuId, []);
       modifierMap.get(menuId)!.push({
-        modifier: {
-          id: row.id,
-          name: row.name,
-          type: row.type,
-          options: row.options, // asumsikan options disimpan sebagai string/json
-        },
+        modifier: { id: row.id, name: row.name, type: row.type, options: row.options },
       });
     }
 
-    const updatedMenus = await Promise.all(
-      (menus as any[]).map(async (menu) => {
-        const menuId = menu.id;
-        const menuIngredients = ingredientMap.get(menuId) || [];
+    // Calculate costs in plain JS — no DB call in this step at all
+    const updatedMenus = (menus as any[]).map((menu) => {
+      const menuId = menu.id;
+      const menuIngredients = ingredientMap.get(menuId) || [];
 
-        // Hitung hargaBakul
-        const totalCost = menuIngredients.reduce((acc, item) => {
-          const ingredient = item.ingredient;
-          const amount = Number(item.amount) || 0;
-          const price = Number(ingredient.price) || 0;
-          const batchYield = Number(ingredient.batchYield) || 0;
-          let cost = 0;
+      const totalCost = menuIngredients.reduce((acc, item) => {
+        const amount = Number(item.amount) || 0;
+        const price = Number(item.ingredient.price) || 0;
+        return acc + amount * price;
+      }, 0);
 
-          if (ingredient.type.toUpperCase() === 'SEMI_FINISHED' && batchYield > 0) {
-            // cost = (amount / batchYield) * price;
-            cost = amount * price;
-          } else {
-            cost = amount * price;
-          }
-          return acc + cost;
-        }, 0);
+      return {
+        ...menu,
+        hargaBakul: totalCost,
+        ingredients: menuIngredients,
+        discounts: discountMap.get(menuId) || [],
+        modifiers: modifierMap.get(menuId) || [],
+      };
+    });
 
-        // Update hargaBakul
-        await db.execute(`UPDATE menu SET hargaBakul = ? WHERE id = ?`, [totalCost, menuId]);
+    // Single batched UPDATE for all menus at once — one connection, one query
+    if (updatedMenus.length > 0) {
+      const caseClauses = updatedMenus.map(() => `WHEN ? THEN ?`).join(' ');
+      const caseParams = updatedMenus.flatMap((m) => [m.id, m.hargaBakul]);
+      const ids = updatedMenus.map((m) => m.id);
 
-        return {
-          ...menu,
-          hargaBakul: totalCost,
-          ingredients: menuIngredients,
-          discounts: discountMap.get(menuId) || [],
-          modifiers: modifierMap.get(menuId) || [],
-        };
-      })
-    );
+      await db.query(
+        `UPDATE menu SET hargaBakul = CASE id ${caseClauses} END WHERE id IN (?)`,
+        [...caseParams, ids]
+      );
+    }
 
     return NextResponse.json(updatedMenus);
   } catch (error) {
