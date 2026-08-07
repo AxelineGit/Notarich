@@ -98,8 +98,13 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+const PUBLIC_PATHS = ['/login', '/forgotPassword', '/resetPassword', '/unauthorized', '/register'];
+
+function isPublicPath(pathname: string) {
+  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'));
+}
+
 export async function middleware(request: NextRequest) {
-  // Generate CSP nonce for this request
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
   const cspHeader = `
     default-src 'self';
@@ -119,6 +124,14 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set('Content-Security-Policy', cspHeader);
 
   const url = request.nextUrl.clone();
+  const pathname = url.pathname;
+
+  // Public pages: apply CSP only, skip auth/permission check entirely
+  if (isPublicPath(pathname)) {
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
+    response.headers.set('Content-Security-Policy', cspHeader);
+    return response;
+  }
 
   // Hit internal API untuk ambil user session
   const res = await fetch(`${request.nextUrl.origin}/api/auth/me`, {
@@ -142,8 +155,6 @@ export async function middleware(request: NextRequest) {
     response.headers.set('Content-Security-Policy', cspHeader);
     return response;
   }
-
-  const pathname = url.pathname;
 
   const permissionMap: Record<string, string> = {
     '/dashboard': 'backofficePermissions.viewDashboard',
@@ -181,9 +192,7 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  const response = NextResponse.next({
-    request: { headers: requestHeaders },
-  });
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('Content-Security-Policy', cspHeader);
   return response;
 }
